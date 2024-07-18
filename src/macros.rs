@@ -77,3 +77,50 @@ macro_rules! cfg_display {
 macro_rules! cfg_task {
     ($($item:item)*) => { _cfg_common!{ "multitask" $($item)* } }
 }
+
+macro_rules! define_async_api {
+    ($( $(#[$attr:meta])* $vis:vis fn $name:ident( $($arg:ident : $type:ty),* $(,)? ) $( -> $ret:ty )? ; )+) => {
+        $(
+            $(#[$attr])*
+            $vis async fn $name( $($arg : $type),* ) $( -> $ret )? {
+                $crate::imp::$name( $($arg),* ).await
+            }
+        )+
+    };
+    (
+        @cfg $feature:literal;
+        $( $(#[$attr:meta])* $vis:vis fn $name:ident( $($arg:ident : $type:ty),* $(,)? ) $( -> $ret:ty )? ; )+
+    ) => {
+        $(
+            #[cfg(feature = $feature)]
+            $(#[$attr])*
+            $vis async fn $name( $($arg : $type),* ) $( -> $ret )? {
+                $crate::imp::$name( $($arg),* ).await
+            }
+
+            #[allow(unused_variables)]
+            #[cfg(all(feature = "dummy-if-not-enabled", not(feature = $feature)))]
+            $(#[$attr])*
+            $vis async fn $name( $($arg : $type),* ) $( -> $ret )? {
+                unimplemented!(stringify!($name))
+            }
+        )+
+    };
+}
+
+macro_rules! _cfg_not_common {
+    ( $feature:literal $($item:item)*  ) => {
+        $(
+            #[cfg(not(feature = $feature))]
+            $item
+        )*
+    }
+}
+
+macro_rules! cfg_async_task {
+    ($($item:item)*) => { _cfg_common!{ "async" $($item)* } }
+}
+
+macro_rules! cfg_noasync_task {
+    ($($item:item)*) => { _cfg_not_common!{ "async" $($item)* } }
+}

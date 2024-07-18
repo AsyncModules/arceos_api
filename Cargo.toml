@@ -19,6 +19,7 @@ multitask = ["axtask/multitask", "axfeat/multitask"]
 fs = ["dep:axfs", "axfeat/fs"]
 net = ["dep:axnet", "axfeat/net"]
 display = ["dep:axdisplay", "axfeat/display"]
+async = ["axtask/async"]
 
 myfs = ["axfeat/myfs"]
 

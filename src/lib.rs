@@ -87,38 +87,81 @@ pub mod task {
     }
 
     define_api! {
+        /// Exits the current task with the given exit code.
+        pub fn ax_exit(exit_code: i32) -> !;
+    }
+
+    #[cfg(not(feature = "async"))]
+    define_api! {
         /// Current task is going to sleep, it will be woken up at the given deadline.
         ///
         /// If the feature `multitask` is not enabled, it uses busy-wait instead
         pub fn ax_sleep_until(deadline: crate::time::AxTimeValue);
-
         /// Current task gives up the CPU time voluntarily, and switches to another
         /// ready task.
         ///
         /// If the feature `multitask` is not enabled, it does nothing.
         pub fn ax_yield_now();
+    }
 
-        /// Exits the current task with the given exit code.
-        pub fn ax_exit(exit_code: i32) -> !;
+    #[cfg(feature = "async")]
+    define_async_api! {
+        /// Current task is going to sleep, it will be woken up at the given deadline.
+        ///
+        /// If the feature `multitask` is not enabled, it uses busy-wait instead
+        pub fn ax_sleep_until(deadline: crate::time::AxTimeValue);
+        /// Current task gives up the CPU time voluntarily, and switches to another
+        /// ready task.
+        ///
+        /// If the feature `multitask` is not enabled, it does nothing.
+        pub fn ax_yield_now();
     }
 
     define_api! {
         @cfg "multitask";
 
-        /// Returns the current task's ID.
-        pub fn ax_current_task_id() -> u64;
+        #[cfg(not(feature = "async"))]
         /// Spawns a new task with the given entry point and other arguments.
         pub fn ax_spawn(
             f: impl FnOnce() + Send + 'static,
             name: alloc::string::String,
             stack_size: usize
         ) -> AxTaskHandle;
-        /// Waits for the given task to exit, and returns its exit code (the
-        /// argument of [`ax_exit`]).
-        pub fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32>;
+
+        #[cfg(feature = "async")]
+        /// Spawns a new task with the given entry point and other arguments.
+        pub fn ax_spawn(
+            f: impl core::future::Future<Output = i32> + Send + 'static,
+            name: alloc::string::String,
+            stack_size: usize
+        ) -> AxTaskHandle;
+        /// Returns the current task's ID.
+        pub fn ax_current_task_id() -> u64;
+
         /// Sets the priority of the current task.
         pub fn ax_set_current_priority(prio: isize) -> crate::AxResult;
 
+        /// Wakes up one or more tasks in the wait queue.
+        ///
+        /// The maximum number of tasks to wake up is specified by `count`. If
+        /// `count` is `u32::MAX`, it will wake up all tasks in the wait queue.
+        pub fn ax_wait_queue_wake(wq: &AxWaitQueueHandle, count: u32);
+
+        #[cfg(feature = "async")]
+        /// Run a task to completion
+        pub fn block_on(
+            f: impl core::future::Future<Output = i32> + Send + 'static,
+            name: alloc::string::String,
+        ) -> i32;
+    }
+
+    #[cfg(not(feature = "async"))]
+    define_api! {
+        @cfg "multitask";
+
+        /// Waits for the given task to exit, and returns its exit code (the
+        /// argument of [`ax_exit`]).
+        pub fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32>;
         /// Blocks the current task and put it into the wait queue, until the
         /// given condition becomes true, or the the given duration has elapsed
         /// (if specified).
@@ -127,11 +170,24 @@ pub mod task {
             until_condition: impl Fn() -> bool,
             timeout: Option<core::time::Duration>,
         ) -> bool;
-        /// Wakes up one or more tasks in the wait queue.
-        ///
-        /// The maximum number of tasks to wake up is specified by `count`. If
-        /// `count` is `u32::MAX`, it will wake up all tasks in the wait queue.
-        pub fn ax_wait_queue_wake(wq: &AxWaitQueueHandle, count: u32);
+        
+    }
+
+    #[cfg(feature = "async")]
+    define_async_api! {
+        @cfg "multitask";
+
+        /// Waits for the given task to exit, and returns its exit code (the
+        /// argument of [`ax_exit`]).
+        pub fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32>;
+        /// Blocks the current task and put it into the wait queue, until the
+        /// given condition becomes true, or the the given duration has elapsed
+        /// (if specified).
+        pub fn ax_wait_queue_wait(
+            wq: &AxWaitQueueHandle,
+            until_condition: impl Fn() -> bool,
+            timeout: Option<core::time::Duration>,
+        ) -> bool;
     }
 }
 
