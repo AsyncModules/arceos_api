@@ -5,40 +5,36 @@ pub fn ax_exit(_exit_code: i32) -> ! {
     axhal::misc::terminate();
 }
 
-#[cfg(not(feature = "async"))]
-cfg_noasync_task! {
-    pub fn ax_sleep_until(deadline: crate::time::AxTimeValue) {
-        #[cfg(feature = "multitask")]
-        axtask::sleep_until(deadline);
-        #[cfg(not(feature = "multitask"))]
-        axhal::time::busy_wait_until(deadline);
-    }
-    
-    pub fn ax_yield_now() {
-        #[cfg(feature = "multitask")]
-        axtask::yield_now();
-        #[cfg(not(feature = "multitask"))]
-        if cfg!(feature = "irq") {
-            axhal::arch::wait_for_irqs();
-        } else {
-            core::hint::spin_loop();
-        }
+pub fn ax_sleep_until(deadline: crate::time::AxTimeValue) {
+    #[cfg(feature = "multitask")]
+    axtask::sleep_until(deadline);
+    #[cfg(not(feature = "multitask"))]
+    axhal::time::busy_wait_until(deadline);
+}
+
+pub fn ax_yield_now() {
+    #[cfg(feature = "multitask")]
+    axtask::yield_now();
+    #[cfg(not(feature = "multitask"))]
+    if cfg!(feature = "irq") {
+        axhal::arch::wait_for_irqs();
+    } else {
+        core::hint::spin_loop();
     }
 }
 
-
 #[cfg(feature = "async")]
 cfg_async_task! {
-    pub async fn ax_sleep_until(deadline: crate::time::AxTimeValue) {
+    pub async fn ax_async_sleep_until(deadline: crate::time::AxTimeValue) {
         #[cfg(feature = "multitask")]
-        axtask::sleep_until(deadline).await;
+        axtask::async_sleep_until(deadline).await;
         #[cfg(not(feature = "multitask"))]
         axhal::time::busy_wait_until(deadline);
     }
     
-    pub async fn ax_yield_now() {
+    pub async fn ax_async_yield_now() {
         #[cfg(feature = "multitask")]
-        axtask::yield_now().await;
+        axtask::async_yield_now().await;
         #[cfg(not(feature = "multitask"))]
         if cfg!(feature = "irq") {
             axhal::arch::wait_for_irqs();
@@ -92,6 +88,11 @@ cfg_task! {
         }
     }
 
+    pub fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32> {
+        // task.inner.join()
+        axtask::join(&task.inner)
+    }
+
     pub fn ax_wait_queue_wake(wq: &AxWaitQueueHandle, count: u32) {
         if count == u32::MAX {
             wq.0.notify_all();
@@ -100,26 +101,6 @@ cfg_task! {
                 wq.0.notify_one();
             }
         }
-    }
-}
-
-#[cfg(not(feature = "async"))]
-cfg_task! {
-
-    pub fn ax_spawn<F>(f: F, name: alloc::string::String, stack_size: usize) -> AxTaskHandle
-    where
-        F: FnOnce() + Send + 'static,
-    {
-        let inner = axtask::spawn_raw(f, name, stack_size);
-        AxTaskHandle {
-            id: inner.id().as_u64(),
-            inner,
-        }
-    }
-
-    pub fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32> {
-        // task.inner.join()
-        axtask::join(&task.inner)
     }
 
     pub fn ax_wait_queue_wait(
@@ -138,41 +119,56 @@ cfg_task! {
         wq.0.wait_until(until_condition);
         false
     }
-
 }
 
-#[cfg(feature = "async")]
+#[cfg(not(feature = "async"))]
 cfg_task! {
 
-    pub fn ax_spawn<F>(f: F, name: alloc::string::String, _stack_size: usize) -> AxTaskHandle
+    pub fn ax_spawn<F>(f: F, name: alloc::string::String, stack_size: usize) -> AxTaskHandle
     where
-        F: core::future::Future<Output = i32> + Send + 'static,
+        F: FnOnce() + Send + 'static,
     {
-        let inner = axtask::spawn_raw(move || f, name);
+        let inner = axtask::spawn_raw(f, name, stack_size);
         AxTaskHandle {
             id: inner.id().as_u64(),
             inner,
         }
     }
 
-    pub async fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32> {
-        // task.inner.join()
-        axtask::join(&task.inner).await
+}
+
+#[cfg(feature = "async")]
+cfg_task! {
+
+    pub fn ax_spawn<F>(f: F, name: alloc::string::String, stack_size: usize) -> AxTaskHandle
+    where
+        F: core::future::Future<Output = i32> + Send + 'static,
+    {
+        let inner = axtask::spawn_raw(move || f, name, stack_size);
+        AxTaskHandle {
+            id: inner.id().as_u64(),
+            inner,
+        }
     }
 
-    pub async fn ax_wait_queue_wait(
+    pub async fn ax_async_wait_for_exit(task: AxTaskHandle) -> Option<i32> {
+        // task.inner.join()
+        axtask::async_join(&task.inner).await
+    }
+
+    pub async fn ax_async_wait_queue_wait(
         wq: &AxWaitQueueHandle,
         until_condition: impl Fn() -> bool,
         timeout: Option<Duration>,
     ) -> bool {
         #[cfg(feature = "irq")]
         if let Some(dur) = timeout {
-            return wq.0.wait_timeout_until(dur, until_condition).await;
+            return wq.0.async_wait_timeout_until(dur, until_condition).await;
         }
         if timeout.is_some() {
             axlog::warn!("ax_wait_queue_wait: the `timeout` argument is ignored without the `irq` feature");
         }
-        wq.0.wait_until(until_condition).await;
+        wq.0.async_wait_until(until_condition).await;
         false
     }
 

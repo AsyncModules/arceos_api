@@ -89,10 +89,6 @@ pub mod task {
     define_api! {
         /// Exits the current task with the given exit code.
         pub fn ax_exit(exit_code: i32) -> !;
-    }
-
-    #[cfg(not(feature = "async"))]
-    define_api! {
         /// Current task is going to sleep, it will be woken up at the given deadline.
         ///
         /// If the feature `multitask` is not enabled, it uses busy-wait instead
@@ -109,12 +105,12 @@ pub mod task {
         /// Current task is going to sleep, it will be woken up at the given deadline.
         ///
         /// If the feature `multitask` is not enabled, it uses busy-wait instead
-        pub fn ax_sleep_until(deadline: crate::time::AxTimeValue);
+        pub fn ax_async_sleep_until(deadline: crate::time::AxTimeValue);
         /// Current task gives up the CPU time voluntarily, and switches to another
         /// ready task.
         ///
         /// If the feature `multitask` is not enabled, it does nothing.
-        pub fn ax_yield_now();
+        pub fn ax_async_yield_now();
     }
 
     define_api! {
@@ -155,7 +151,6 @@ pub mod task {
         ) -> i32;
     }
 
-    #[cfg(not(feature = "async"))]
     define_api! {
         @cfg "multitask";
 
@@ -179,11 +174,11 @@ pub mod task {
 
         /// Waits for the given task to exit, and returns its exit code (the
         /// argument of [`ax_exit`]).
-        pub fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32>;
+        pub fn ax_async_wait_for_exit(task: AxTaskHandle) -> Option<i32>;
         /// Blocks the current task and put it into the wait queue, until the
         /// given condition becomes true, or the the given duration has elapsed
         /// (if specified).
-        pub fn ax_wait_queue_wait(
+        pub fn ax_async_wait_queue_wait(
             wq: &AxWaitQueueHandle,
             until_condition: impl Fn() -> bool,
             timeout: Option<core::time::Duration>,
